@@ -15,8 +15,8 @@ percent = 1
 stop_loss_pct = 10
 stop_profit_pct = 10
 initial_cash=100000
-start_date = "20240101"
-end_date = "20250221"
+start_date = "20250101"
+end_date = "20250224"
 
 
 d = ak.stock_zh_a_spot_em()
@@ -29,13 +29,19 @@ akshare = AKShare()
 
 # 定义交易策略：如果当前没有持有该股票，则买入股票，并设置止盈点位
 def buy_with_stop_loss(ctx: ExecContext):
+    # 日期
+    print(ctx._curr_date, ctx.symbol)
+
+    stock_zh_a_hist_pre_min_em_df = akshare.query(ctx.symbol,start_date=ctx._curr_date,end_date=ctx._curr_date)
+    print(stock_zh_a_hist_pre_min_em_df)
+
     pos = ctx.long_pos()
     if not pos:
         ctx.buy_shares = ctx.calc_target_shares(percent)
         ctx.hold_bars = 100
     else:
         high_10d = ctx.indicator('high_10d')
-        print(high_10d)
+        # print(high_10d)
         ctx.sell_shares = pos.shares
         ctx.stop_profit_pct = stop_profit_pct
 
@@ -51,7 +57,7 @@ strategy.add_execution(fn=buy_with_stop_loss, symbols=symbols, indicators=[highe
 result = strategy.backtest()
 
 
-print(result.portfolio.index)
+# print(result.portfolio.index)
 # print(result.metrics_df.round(4))
 # print(result.metrics)
 # print(result.orders)
