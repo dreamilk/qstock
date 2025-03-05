@@ -174,13 +174,14 @@ def main():
         # 找出指定日期之前的交易日
         recent_dates = [date for date in trade_dates if date <= today]
         
-        if len(recent_dates) <= 4:
+        if len(recent_dates) <= 5:  # Changed from 4 to 5 to accommodate 5 days ago
             print_with_flush("无法获取足够的交易日数据")
             return
             
         # 获取相关交易日期
+        date_5days_ago = recent_dates[5]  # 5个交易日前（需为上涨）
         date_4days_ago = recent_dates[4]  # 4个交易日前（涨停日）
-        date_3days_ago = recent_dates[3]  # 3个交易日前（需为上涨，成交量需大于涨停日）
+        date_3days_ago = recent_dates[3]  # 3个交易日前（最高价需超过4日前最高价，不要求涨）
         date_2days_ago = recent_dates[2]  # 2个交易日前（需为下跌）
         date_1day_ago = recent_dates[1]   # 1个交易日前（需为下跌）
         latest_date = recent_dates[0]     # 最近交易日
@@ -232,30 +233,56 @@ def main():
                 # 检查日期是否匹配
                 dates_in_hist = [d.replace("-", "") for d in stock_hist['日期'].astype(str)]
                 
-                if (date_4days_ago in dates_in_hist and
+                if (date_5days_ago in dates_in_hist and
+                    date_4days_ago in dates_in_hist and
                     date_3days_ago in dates_in_hist and 
                     date_2days_ago in dates_in_hist and 
                     date_1day_ago in dates_in_hist):
                     
-                    # 获取涨停日和次日的成交量
-                    volume_4days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_4days_ago]['成交量'].values[0]
-                    volume_3days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_3days_ago]['成交量'].values[0]
+                    # 获取5日前的涨跌幅
+                    pct_chg_5days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_5days_ago]['涨跌幅'].values[0]
                     
                     # 获取各日期的涨跌幅
                     pct_chg_3days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_3days_ago]['涨跌幅'].values[0]
                     pct_chg_2days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_2days_ago]['涨跌幅'].values[0]
                     pct_chg_1day_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_1day_ago]['涨跌幅'].values[0]
                     
+                    # 获取涨停日和次日的成交量
+                    volume_4days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_4days_ago]['成交量'].values[0]
+                    volume_3days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_3days_ago]['成交量'].values[0]
+                    
                     # 获取4日前(涨停日)的最高价和最低价
                     high_4days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_4days_ago]['最高'].values[0]
                     low_4days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_4days_ago]['最低'].values[0]
                     close_4days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_4days_ago]['收盘'].values[0]
+                    open_4days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_4days_ago]['开盘'].values[0]
+                    
+                    # 获取3日前的最低价和最高价
+                    low_3days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_3days_ago]['最低'].values[0]
+                    high_3days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_3days_ago]['最高'].values[0]
+                    
+                    # 获取2日前和1日前的开盘价和收盘价
+                    open_2days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_2days_ago]['开盘'].values[0]
+                    close_2days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_2days_ago]['收盘'].values[0]
+                    open_1day_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_1day_ago]['开盘'].values[0]
+                    close_1day_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_1day_ago]['收盘'].values[0]
+                    
+                    # 获取2日前和1日前的最高价和最低价
+                    high_2days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_2days_ago]['最高'].values[0]
+                    low_2days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_2days_ago]['最低'].values[0]
+                    high_1day_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_1day_ago]['最高'].values[0]
+                    low_1day_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_1day_ago]['最低'].values[0]
+                    
+                    # 计算2日前和1日前的开盘与收盘差值
+                    drop_2days_ago = open_2days_ago - close_2days_ago
+                    drop_1day_ago = open_1day_ago - close_1day_ago
+                    
+                    # 计算2日前和1日前的价格区间（最高价-最低价）
+                    range_2days_ago = high_2days_ago - low_2days_ago
+                    range_1day_ago = high_1day_ago - low_1day_ago
                     
                     # 计算特定价格点：4日前最低价+(最高价-最低价)*0.3
-                    price_point = low_4days_ago + (high_4days_ago - low_4days_ago) * 0.3
-                    
-                    # 获取3日前的最低价
-                    low_3days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_3days_ago]['最低'].values[0]
+                    price_point = low_4days_ago + (high_4days_ago - low_4days_ago) * 0.25
                     
                     # 获取前一天收盘价和最低价
                     prev_day_close = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_1day_ago]['收盘'].values[0]
@@ -291,16 +318,20 @@ def main():
                         today_current = today_high = today_low = float('nan')
                     
                     # 检查所有条件：
-                    # 1. 3日前涨，近两日跌
-                    # 2. 3日前成交量大于4日前
-                    # 3. 3日前最低价高于特定价格点
-                    # 4. 前一天收盘价低于4日前收盘价
-                    if (pct_chg_3days_ago > 0 and 
+                    # 1. 5日前涨，近两日跌
+                    # 2. 3日前最高价高于4日前开盘价+(收盘价-开盘价)*0.7
+                    # 3. 3日前成交量大于4日前
+                    # 4. 3日前最低价高于特定价格点
+                    # 5. 前一天收盘价低于4日前收盘价
+                    # 6. 2日前的最高价-最低价 大于 1日前的最高价-最低价
+                    if (pct_chg_5days_ago > 0 and 
                         pct_chg_2days_ago < 0 and 
                         pct_chg_1day_ago < 0 and
+                        high_3days_ago > (open_4days_ago + (close_4days_ago - open_4days_ago) * 0.7) and
                         volume_3days_ago > volume_4days_ago and
                         low_3days_ago > price_point and
-                        prev_day_close < close_4days_ago):
+                        prev_day_close < close_4days_ago and
+                        range_2days_ago > range_1day_ago):
                         
                         # 生成K线图
                         print_with_flush(f"正在生成 {stock_code} {stock_name} 的K线图...")
@@ -310,11 +341,17 @@ def main():
                             '代码': stock_code,
                             '名称': stock_name,
                             '涨停日': date_4days_ago,
+                            '5日前涨幅': f"{pct_chg_5days_ago:.2f}%",
                             '3日前涨幅': f"{pct_chg_3days_ago:.2f}%",
                             '2日前涨幅': f"{pct_chg_2days_ago:.2f}%",
                             '1日前涨幅': f"{pct_chg_1day_ago:.2f}%",
+                            '3日高价/4日高价比': f"{(high_3days_ago/high_4days_ago):.4f}",
                             '成交量变化率': f"{volume_change_ratio:.2f}%",
                             '价格条件超额': f"{price_condition_ratio:.2f}%",
+                            '2日前价格跌幅': f"{drop_2days_ago:.2f}",
+                            '1日前价格跌幅': f"{drop_1day_ago:.2f}",
+                            '2日前价格区间': f"{range_2days_ago:.2f}",
+                            '1日前价格区间': f"{range_1day_ago:.2f}",
                             '前一日收盘价': f"{prev_day_close:.2f}",
                             '前一日最低价': f"{prev_day_low:.2f}",
                             '10日均线': f"{latest_ma10:.2f}",
