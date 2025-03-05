@@ -35,4 +35,4 @@ jobs:
           body: 请查看附件获取今日的分析结果。
           to: ${{ vars.USER }}
           from: GitHub Actions
-          attachments: ./*.csv,./*.png
+          attachments: ./*.csv,./charts/*.png
