@@ -1,4 +1,4 @@
-pybroker
+lib-pybroker
 akshare
 pandas
 numpy
