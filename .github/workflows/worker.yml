@@ -24,6 +24,50 @@ jobs:
       - name: Run pick.py
         run: python pick.py
         
+      - name: Prepare email content
+        id: prepare_email
+        run: |
+          python -c "
+          import os
+          import pandas as pd
+          import base64
+          from datetime import date
+          
+          # 读取所有CSV文件并转换为HTML表格
+          tables_html = ''
+          for csv_file in [f for f in os.listdir('.') if f.endswith('.csv')]:
+              df = pd.read_csv(csv_file)
+              tables_html += f'<h2>{os.path.splitext(csv_file)[0]}</h2>'
+              tables_html += df.to_html(index=False, border=1)
+              tables_html += '<br><br>'
+          
+          # 嵌入所有图片
+          images_html = ''
+          for img_file in [f for f in os.listdir('./charts') if f.endswith('.png')]:
+              with open(f'./charts/{img_file}', 'rb') as img:
+                  img_data = base64.b64encode(img.read()).decode()
+                  images_html += f'<h2>{os.path.splitext(img_file)[0]}</h2>'
+                  images_html += f'<img src=\"data:image/png;base64,{img_data}\" /><br><br>'
+          
+          # 生成完整的HTML邮件内容
+          today = date.today().strftime('%Y-%m-%d')
+          html_content = f'''
+          <html>
+          <body>
+            <h1>每日Pick结果 - {today}</h1>
+            <h2>数据表格</h2>
+            {tables_html}
+            <h2>图表</h2>
+            {images_html}
+          </body>
+          </html>
+          '''
+          
+          # 将HTML内容保存到文件
+          with open('email_content.html', 'w') as f:
+              f.write(html_content)
+          "
+          
       - name: Send email
         uses: dawidd6/action-send-mail@v3
         with:
@@ -32,7 +76,8 @@ jobs:
           username: ${{ secrets.MAIL_USERNAME }}
           password: ${{ secrets.MAIL_PASSWORD }}
           subject: 每日Pick结果 - ${{ github.repository }}
-          body: 请查看附件获取今日的分析结果。
+          body: file://email_content.html
+          content_type: text/html
           to: ${{ vars.USER }}
           from: GitHub Actions
           attachments: ./*.csv,./charts/*.png
