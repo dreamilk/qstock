@@ -54,7 +54,7 @@ jobs:
           html_content = f'''
           <html>
           <body>
-            <h1>每日Pick结果 - {today}</h1>
+            <h1>今日推荐股票 - {today}</h1>
             <h2>数据表格</h2>
             {tables_html}
             <h2>图表</h2>
@@ -75,8 +75,8 @@ jobs:
           server_port: ${{ secrets.MAIL_PORT }}
           username: ${{ secrets.MAIL_USERNAME }}
           password: ${{ secrets.MAIL_PASSWORD }}
-          subject: 每日Pick结果 - ${{ github.repository }}
+          subject: 今日推荐股票
           html_body: file://email_content.html
           to: ${{ vars.USER }}
-          from: GitHub Actions
+          from: Buffett
           attachments: ./*.csv,./charts/*.png
