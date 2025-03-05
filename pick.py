@@ -4,6 +4,10 @@ import pandas as pd
 import time
 import sys
 import argparse  # Add argparse for command-line arguments
+import matplotlib.pyplot as plt
+import mplfinance as mpf
+from matplotlib.ticker import AutoMinorLocator
+import os
 
 # 设置请求超时
 import requests
@@ -27,6 +31,99 @@ def print_with_flush(message):
     """打印消息并立即刷新输出"""
     print(message)
     sys.stdout.flush()
+
+def generate_kline_chart(stock_code, stock_name, hist_data, reference_date, output_dir="charts"):
+    """生成K线图并保存
+    
+    Args:
+        stock_code: 股票代码
+        stock_name: 股票名称
+        hist_data: 历史数据 DataFrame
+        reference_date: 参考日期 (YYYYMMDD格式)
+        output_dir: 输出目录
+    """
+    try:
+        # 确保输出目录存在
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # 转换日期为datetime格式
+        hist_data['日期'] = pd.to_datetime(hist_data['日期'])
+        hist_data.set_index('日期', inplace=True)
+        
+        # 重命名列以符合mplfinance要求
+        hist_data_renamed = hist_data.rename(columns={
+            '开盘': 'Open',
+            '收盘': 'Close',
+            '最高': 'High',
+            '最低': 'Low',
+            '成交量': 'Volume'
+        })
+        
+        # 计算要显示的日期范围
+        reference_date_dt = datetime.datetime.strptime(reference_date, '%Y%m%d')
+        start_date = reference_date_dt - datetime.timedelta(days=30)  # 多取几天以确保有足够的交易日
+        end_date_plus3 = reference_date_dt + datetime.timedelta(days=10)  # 多取几天以确保有3个交易日
+        
+        today = datetime.datetime.now()
+        end_date = min(end_date_plus3, today)
+        
+        # 截取日期范围内的数据 - 创建显式副本而不是视图
+        plot_data = hist_data_renamed[(hist_data_renamed.index >= start_date) & 
+                                      (hist_data_renamed.index <= end_date)].copy()
+        
+        # 如果数据量太少则跳过
+        if len(plot_data) < 5:
+            print_with_flush(f"股票 {stock_code} 的K线图数据不足，跳过绘图")
+            return None
+            
+        # 确保有数据
+        if plot_data.empty:
+            print_with_flush(f"股票 {stock_code} 在指定时间范围内没有数据，跳过绘图")
+            return None
+        
+        # 计算移动平均线 - 现在使用.loc来避免SettingWithCopyWarning
+        plot_data.loc[:, 'MA10'] = plot_data['Close'].rolling(window=10).mean()
+        plot_data.loc[:, 'MA20'] = plot_data['Close'].rolling(window=20).mean()
+        
+        # 设置K线图样式
+        mc = mpf.make_marketcolors(up='red', down='green', inherit=True)
+        s = mpf.make_mpf_style(marketcolors=mc, gridstyle='--')
+        
+        # 添加均线 - 只有当有足够的数据点时
+        add_plots = []
+        if not plot_data['MA10'].isnull().all():
+            add_plots.append(mpf.make_addplot(plot_data['MA10'], color='blue', width=1))
+        if not plot_data['MA20'].isnull().all():
+            add_plots.append(mpf.make_addplot(plot_data['MA20'], color='purple', width=1))
+        
+        # 计算文件名 - 保持要求的格式但确保文件名安全
+        end_date_str = end_date.strftime('%Y%m%d')
+        # 替换股票名称中可能导致文件名问题的字符
+        safe_stock_name = ''.join(c if c.isalnum() else '_' for c in stock_name)
+        filename = f"{stock_code}_{safe_stock_name}_{end_date_str}.png"
+        filepath = os.path.join(output_dir, filename)
+        
+        # 绘制K线图 - 只显示股票代码
+        fig, axes = mpf.plot(
+            plot_data,
+            type='candle',
+            style=s,
+            addplot=add_plots if add_plots else None,
+            volume=True,
+            figsize=(12, 8),
+            title=f"{stock_code}",
+            returnfig=True
+        )
+        
+        # 保存图表
+        fig.savefig(filepath, dpi=150)
+        plt.close(fig)
+        
+        print_with_flush(f"已保存K线图: {filepath}")
+        return filepath
+    except Exception as e:
+        print_with_flush(f"生成股票 {stock_code} K线图时出错: {e}")
+        return None
 
 # 主程序
 def main():
@@ -128,6 +225,7 @@ def main():
                     # 获取4日前(涨停日)的最高价和最低价
                     high_4days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_4days_ago]['最高'].values[0]
                     low_4days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_4days_ago]['最低'].values[0]
+                    close_4days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_4days_ago]['收盘'].values[0]
                     
                     # 计算特定价格点：4日前最低价+(最高价-最低价)*0.3
                     price_point = low_4days_ago + (high_4days_ago - low_4days_ago) * 0.3
@@ -172,11 +270,17 @@ def main():
                     # 1. 3日前涨，近两日跌
                     # 2. 3日前成交量大于4日前
                     # 3. 3日前最低价高于特定价格点
+                    # 4. 前一天收盘价低于4日前收盘价
                     if (pct_chg_3days_ago > 0 and 
                         pct_chg_2days_ago < 0 and 
                         pct_chg_1day_ago < 0 and
                         volume_3days_ago > volume_4days_ago and
-                        low_3days_ago > price_point):
+                        low_3days_ago > price_point and
+                        prev_day_close < close_4days_ago):
+                        
+                        # 生成K线图
+                        print_with_flush(f"正在生成 {stock_code} {stock_name} 的K线图...")
+                        chart_path = generate_kline_chart(stock_code, stock_name, stock_hist, date_4days_ago)
                         
                         result_stocks.append({
                             '代码': stock_code,
@@ -193,7 +297,8 @@ def main():
                             '20日均线': f"{latest_ma20:.2f}",
                             '今日最高价': f"{today_high:.2f}" if not pd.isna(today_high) else "暂无数据",
                             '今日最低价': f"{today_low:.2f}" if not pd.isna(today_low) else "暂无数据",
-                            '当前价格': f"{today_current:.2f}" if not pd.isna(today_current) else "暂无数据"
+                            '当前价格': f"{today_current:.2f}" if not pd.isna(today_current) else "暂无数据",
+                            'K线图': chart_path if chart_path else "生成失败"
                         })
                         print_with_flush(f"股票 {stock_code} {stock_name} 符合条件，成交量增加 {volume_change_ratio:.2f}%，价格条件超额 {price_condition_ratio:.2f}%")
             
