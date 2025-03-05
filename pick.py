@@ -281,9 +281,6 @@ def main():
                     range_2days_ago = high_2days_ago - low_2days_ago
                     range_1day_ago = high_1day_ago - low_1day_ago
                     
-                    # 计算特定价格点：4日前最低价+(最高价-最低价)*0.3
-                    price_point = low_4days_ago + (high_4days_ago - low_4days_ago) * 0.25
-                    
                     # 获取前一天收盘价和最低价
                     prev_day_close = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_1day_ago]['收盘'].values[0]
                     prev_day_low = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_1day_ago]['最低'].values[0]
@@ -298,9 +295,6 @@ def main():
                     
                     # 计算成交量变化率
                     volume_change_ratio = (volume_3days_ago / volume_4days_ago - 1) * 100
-                    
-                    # 计算价格条件满足的程度
-                    price_condition_ratio = ((low_3days_ago - price_point) / low_4days_ago) * 100
                     
                     # 获取今日实时数据
                     try:
@@ -319,19 +313,19 @@ def main():
                     
                     # 检查所有条件：
                     # 1. 5日前涨，近两日跌
-                    # 2. 3日前最高价高于4日前开盘价+(收盘价-开盘价)*0.7
+                    # 2. 3日前最高价高于4日前开盘价+(收盘价-开盘价)*0.6
                     # 3. 3日前成交量大于4日前
-                    # 4. 3日前最低价高于特定价格点
-                    # 5. 前一天收盘价低于4日前收盘价
-                    # 6. 2日前的最高价-最低价 大于 1日前的最高价-最低价
-                    if (pct_chg_5days_ago > 0 and 
-                        pct_chg_2days_ago < 0 and 
-                        pct_chg_1day_ago < 0 and
-                        high_3days_ago > (open_4days_ago + (close_4days_ago - open_4days_ago) * 0.7) and
+                    # 4. 3日前最低价高于4日前最低价+(最高价-最低价)*0.05
+                    # 5. 前一天收盘价小于前四天开盘价+(收盘价-开盘价)*0.5
+                    # 6. 2日前收盘差值 大于 1日前的收盘茶汁*0.7
+                    if (pct_chg_5days_ago > -0.02 and 
+                        pct_chg_2days_ago < 0.05 and 
+                        pct_chg_1day_ago < 0.05 and
+                        high_3days_ago > (open_4days_ago + (close_4days_ago - open_4days_ago) * 0.6) and
                         volume_3days_ago > volume_4days_ago and
-                        low_3days_ago > price_point and
-                        prev_day_close < close_4days_ago and
-                        range_2days_ago > range_1day_ago):
+                        low_3days_ago > low_4days_ago + (high_4days_ago - low_4days_ago) * 0.05 and
+                        prev_day_close < (open_4days_ago + (close_4days_ago - open_4days_ago) * 0.5) and
+                        drop_2days_ago > drop_1day_ago*0.7):
                         
                         # 生成K线图
                         print_with_flush(f"正在生成 {stock_code} {stock_name} 的K线图...")
@@ -345,9 +339,7 @@ def main():
                             '3日前涨幅': f"{pct_chg_3days_ago:.2f}%",
                             '2日前涨幅': f"{pct_chg_2days_ago:.2f}%",
                             '1日前涨幅': f"{pct_chg_1day_ago:.2f}%",
-                            '3日高价/4日高价比': f"{(high_3days_ago/high_4days_ago):.4f}",
                             '成交量变化率': f"{volume_change_ratio:.2f}%",
-                            '价格条件超额': f"{price_condition_ratio:.2f}%",
                             '2日前价格跌幅': f"{drop_2days_ago:.2f}",
                             '1日前价格跌幅': f"{drop_1day_ago:.2f}",
                             '2日前价格区间': f"{range_2days_ago:.2f}",
@@ -361,7 +353,7 @@ def main():
                             '当前价格': f"{today_current:.2f}" if not pd.isna(today_current) else "暂无数据",
                             'K线图': chart_path if chart_path else "生成失败"
                         })
-                        print_with_flush(f"股票 {stock_code} {stock_name} 符合条件，成交量增加 {volume_change_ratio:.2f}%，价格条件超额 {price_condition_ratio:.2f}%")
+                        print_with_flush(f"股票 {stock_code} {stock_name} 符合条件")
             
             except Exception as e:
                 print_with_flush(f"处理股票 {stock_code} 时出错: {e}")

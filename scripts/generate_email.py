@@ -30,6 +30,7 @@ def generate_email_content():
     return f'''<html>
 <body>
   <h1>今日推荐股票 - {today}</h1>
+  <p>股市有风险，投资需谨慎<p>
   <h2>数据表格</h2>
   {tables_html}
   <h2>图表</h2>
