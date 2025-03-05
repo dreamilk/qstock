@@ -3,7 +3,7 @@ name: Worker
 on:
     push:
     schedule:
-        - cron: "30 1 * * *"  # UTC时间1:30 (对应UTC+8时区的9:30)
+        - cron: "0 1 * * *"  # UTC时间1:00 (对应UTC+8时区的9:00)
 
 jobs:
   worker:
