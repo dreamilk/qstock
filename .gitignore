@@ -26,3 +26,4 @@ go.work.sum
 
 charts/*
 *.csv
+*.html

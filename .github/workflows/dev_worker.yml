@@ -1,8 +1,9 @@
 name: Worker
 
 on:
-    schedule:
-        - cron: "0 1 * * *"  # UTC时间1:00 (对应UTC+8时区的9:00)
+    push:
+      branches:
+        - main
 
 jobs:
   worker:
@@ -36,6 +37,6 @@ jobs:
           password: ${{ secrets.MAIL_PASSWORD }}
           subject: 今日推荐股票
           html_body: file://email_content.html
-          to: ${{ vars.USER }}
+          to: ${{ vars.DEV_USER }}
           from: Buffett
           attachments: ./*.csv,./charts/*.png
