@@ -1,2 +1,7 @@
+pybroker
 akshare
-lib-pybroker
+pandas
+numpy
+matplotlib
+mplfinance
+requests
