@@ -1,4 +1,4 @@
-name: Worker
+name: dev_worker
 
 on:
     push:
