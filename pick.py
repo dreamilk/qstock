@@ -9,6 +9,10 @@ import mplfinance as mpf
 from matplotlib.ticker import AutoMinorLocator
 import os
 
+# 显示当前运行时间
+current_time = datetime.datetime.now()
+print(f"程序开始运行时间: {current_time.strftime('%Y-%m-%d %H:%M:%S')}")
+
 # 设置请求超时
 import requests
 from requests.adapters import HTTPAdapter
@@ -154,6 +158,7 @@ def main():
     # 解析命令行参数
     parser = argparse.ArgumentParser(description='股票筛选工具')
     parser.add_argument('-d', '--date', help='指定日期 (格式: YYYYMMDD)', default=None)
+    parser.add_argument('-s', '--strategy', help='选股策略 (默认: dragonhead)', default='dragonhead')
     args = parser.parse_args()
     
     # 设置日期
@@ -210,8 +215,8 @@ def main():
         filtered_stocks = main_board_stocks[~main_board_stocks['名称'].str.contains('ST')]
         print_with_flush(f"筛选后股票数: {len(filtered_stocks)}")
         
-        # 继续筛选：3个交易日前为涨，近两个交易日为跌，3日前成交量大于4日前成交量
-        print_with_flush("开始筛选符合涨跌和成交量条件的股票...")
+        # 继续筛选：龙回头策略的条件
+        print_with_flush("开始筛选符合龙回头策略的股票...")
         result_stocks = []
         
         for idx, stock in filtered_stocks.iterrows():
@@ -226,7 +231,7 @@ def main():
                                                adjust="qfq")
                 
                 # 检查数据是否完整
-                if len(stock_hist) < 5:  # 需要5个交易日的数据
+                if len(stock_hist) < 10:  # 需要至少10个交易日的数据用于计算均线
                     print_with_flush(f"股票 {stock_code} 数据不完整，跳过")
                     continue
                 
@@ -239,94 +244,109 @@ def main():
                     date_2days_ago in dates_in_hist and 
                     date_1day_ago in dates_in_hist):
                     
-                    # 获取5日前的涨跌幅
+                    # 获取涨跌幅数据
                     pct_chg_5days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_5days_ago]['涨跌幅'].values[0]
-                    
-                    # 获取各日期的涨跌幅
+                    pct_chg_4days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_4days_ago]['涨跌幅'].values[0]
                     pct_chg_3days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_3days_ago]['涨跌幅'].values[0]
                     pct_chg_2days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_2days_ago]['涨跌幅'].values[0]
                     pct_chg_1day_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_1day_ago]['涨跌幅'].values[0]
                     
-                    # 获取涨停日和次日的成交量
-                    volume_4days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_4days_ago]['成交量'].values[0]
-                    volume_3days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_3days_ago]['成交量'].values[0]
-                    
-                    # 获取4日前(涨停日)的最高价和最低价
+                    # 获取价格数据
                     high_4days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_4days_ago]['最高'].values[0]
                     low_4days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_4days_ago]['最低'].values[0]
                     close_4days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_4days_ago]['收盘'].values[0]
                     open_4days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_4days_ago]['开盘'].values[0]
                     
-                    # 获取3日前的最低价和最高价
-                    low_3days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_3days_ago]['最低'].values[0]
                     high_3days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_3days_ago]['最高'].values[0]
+                    low_3days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_3days_ago]['最低'].values[0]
+                    close_3days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_3days_ago]['收盘'].values[0]
                     
-                    # 获取2日前和1日前的开盘价和收盘价
+                    high_2days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_2days_ago]['最高'].values[0]
+                    low_2days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_2days_ago]['最低'].values[0]
                     open_2days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_2days_ago]['开盘'].values[0]
                     close_2days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_2days_ago]['收盘'].values[0]
+                    
+                    high_1day_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_1day_ago]['最高'].values[0]
+                    low_1day_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_1day_ago]['最低'].values[0]
                     open_1day_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_1day_ago]['开盘'].values[0]
                     close_1day_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_1day_ago]['收盘'].values[0]
                     
-                    # 获取2日前和1日前的最高价和最低价
-                    high_2days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_2days_ago]['最高'].values[0]
-                    low_2days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_2days_ago]['最低'].values[0]
-                    high_1day_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_1day_ago]['最高'].values[0]
-                    low_1day_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_1day_ago]['最低'].values[0]
+                    # 获取成交量数据
+                    volume_5days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_5days_ago]['成交量'].values[0]
+                    volume_4days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_4days_ago]['成交量'].values[0]
+                    volume_3days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_3days_ago]['成交量'].values[0]
+                    volume_2days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_2days_ago]['成交量'].values[0]
+                    volume_1day_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_1day_ago]['成交量'].values[0]
                     
-                    # 计算2日前和1日前的开盘与收盘差值
-                    drop_2days_ago = open_2days_ago - close_2days_ago
-                    drop_1day_ago = open_1day_ago - close_1day_ago
-                    
-                    # 计算2日前和1日前的价格区间（最高价-最低价）
-                    range_2days_ago = high_2days_ago - low_2days_ago
-                    range_1day_ago = high_1day_ago - low_1day_ago
-                    
-                    # 获取前一天收盘价和最低价
-                    prev_day_close = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_1day_ago]['收盘'].values[0]
-                    prev_day_low = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_1day_ago]['最低'].values[0]
-                    
-                    # 计算10日均线和20日均线
+                    # 计算均线
+                    stock_hist['MA5'] = stock_hist['收盘'].rolling(window=5).mean()
                     stock_hist['MA10'] = stock_hist['收盘'].rolling(window=10).mean()
                     stock_hist['MA20'] = stock_hist['收盘'].rolling(window=20).mean()
                     
                     # 获取最近交易日的均线值
+                    latest_ma5 = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_1day_ago]['MA5'].values[0]
                     latest_ma10 = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_1day_ago]['MA10'].values[0]
                     latest_ma20 = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_1day_ago]['MA20'].values[0]
                     
-                    # 计算成交量变化率
-                    volume_change_ratio = (volume_3days_ago / volume_4days_ago - 1) * 100
+                    # 计算涨停日后的回调幅度（从涨停日收盘到最低点的跌幅）
+                    pullback_pct = min(low_3days_ago, low_2days_ago, low_1day_ago) / close_4days_ago - 1
                     
-                    # 获取今日实时数据
-                    try:
-                        today_data = ak.stock_zh_a_spot_em()
-                        today_stock_data = today_data[today_data['代码'] == stock_code]
-                        
-                        if not today_stock_data.empty:
-                            today_current = today_stock_data['最新价'].values[0]
-                            today_high = today_stock_data['最高'].values[0]
-                            today_low = today_stock_data['最低'].values[0]
-                        else:
-                            today_current = today_high = today_low = float('nan')
-                    except Exception as e:
-                        print_with_flush(f"获取 {stock_code} 今日数据时出错: {e}")
-                        today_current = today_high = today_low = float('nan')
+                    # 计算均线支撑情况
+                    close_to_ma10 = abs(low_1day_ago / latest_ma10 - 1) < 0.03  # 最低价接近10日线
+                    close_to_ma20 = abs(low_1day_ago / latest_ma20 - 1) < 0.03  # 最低价接近20日线
+                    above_ma20 = close_1day_ago > latest_ma20  # 收盘价在20日线上方
                     
-                    # 检查所有条件：
-                    # 1. 5日前涨，近两日跌
-                    # 2. 3日前最高价高于4日前开盘价+(收盘价-开盘价)*0.6
-                    # 3. 3日前成交量大于4日前
-                    # 4. 3日前最低价高于4日前最低价+(最高价-最低价)*0.05
-                    # 5. 前一天收盘价小于前四天开盘价+(收盘价-开盘价)*0.5
-                    # 6. 2日前收盘差值 大于 1日前的收盘茶汁*0.7
-                    if (pct_chg_5days_ago > -0.02 and 
-                        pct_chg_2days_ago < 0.05 and 
-                        pct_chg_1day_ago < 0.05 and
-                        high_3days_ago > (open_4days_ago + (close_4days_ago - open_4days_ago) * 0.6) and
-                        volume_3days_ago > volume_4days_ago and
-                        low_3days_ago > low_4days_ago + (high_4days_ago - low_4days_ago) * 0.05 and
-                        prev_day_close < (open_4days_ago + (close_4days_ago - open_4days_ago) * 0.5) and
-                        drop_2days_ago > drop_1day_ago*0.7):
+                    # 计算MACD值（简化版）- 这里用收盘价的短期和长期均线差值作为简化的MACD
+                    stock_hist['EMA12'] = stock_hist['收盘'].ewm(span=12, adjust=False).mean()
+                    stock_hist['EMA26'] = stock_hist['收盘'].ewm(span=26, adjust=False).mean()
+                    stock_hist['MACD'] = stock_hist['EMA12'] - stock_hist['EMA26']
+                    stock_hist['Signal'] = stock_hist['MACD'].ewm(span=9, adjust=False).mean()
+                    stock_hist['Histogram'] = stock_hist['MACD'] - stock_hist['Signal']
+                    
+                    # 检查MACD柱状图是否由负转正或上升
+                    hist_2days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_2days_ago]['Histogram'].values[0]
+                    hist_1day_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_1day_ago]['Histogram'].values[0]
+                    macd_improving = hist_1day_ago > hist_2days_ago
+                    macd_turning_positive = hist_1day_ago > 0 and hist_2days_ago < 0
+                    
+                    # 计算缩量回调特征
+                    avg_volume_before_limit = (volume_5days_ago + volume_4days_ago) / 2
+                    avg_volume_after_limit = (volume_3days_ago + volume_2days_ago + volume_1day_ago) / 3
+                    volume_decreasing = avg_volume_after_limit < avg_volume_before_limit
+                    
+                    # 计算反转信号 - 最后一个交易日收盘价高于开盘价（阳线）
+                    reversal_signal = close_1day_ago > open_1day_ago
+                    
+                    # 计算反弹力度 - 从最低点到收盘的涨幅
+                    min_price_during_pullback = min(low_3days_ago, low_2days_ago, low_1day_ago)
+                    rebound_strength = close_1day_ago / min_price_during_pullback - 1
+                    
+                    # 龙回头策略条件:
+                    # 1. 涨停日前后有强势表现 (5日前和涨停日是上涨的)
+                    # 2. 回调幅度适中 (-20% 到 -5% 之间)
+                    # 3. 回调过程是缩量的
+                    # 4. 最近交易日有企稳迹象 (收盘价高于开盘价，形成小阳线)
+                    # 5. 价格接近均线支撑位或已在均线上方企稳
+                    # 6. MACD有改善或金叉迹象
+                    if (
+                        # 上涨阶段特征
+                        pct_chg_5days_ago > 0 and pct_chg_4days_ago > 5 and
                         
+                        # 回调幅度特征
+                        -0.2 < pullback_pct < -0.05 and
+                        
+                        # 缩量回调特征
+                        volume_decreasing and
+                        
+                        # 均线支撑特征
+                        (close_to_ma10 or close_to_ma20 or above_ma20) and
+                        
+                        # 反转信号特征
+                        (reversal_signal or macd_improving or macd_turning_positive) and
+                        
+                        # 确保反弹力度适中，不是大幅反弹（可能是诱多）
+                        0.01 < rebound_strength < 0.05
+                    ):
                         # 生成K线图
                         print_with_flush(f"正在生成 {stock_code} {stock_name} 的K线图...")
                         chart_path = generate_kline_chart(stock_code, stock_name, today)
@@ -335,25 +355,19 @@ def main():
                             '代码': stock_code,
                             '名称': stock_name,
                             '涨停日': date_4days_ago,
-                            '5日前涨幅': f"{pct_chg_5days_ago:.2f}%",
-                            '3日前涨幅': f"{pct_chg_3days_ago:.2f}%",
-                            '2日前涨幅': f"{pct_chg_2days_ago:.2f}%",
-                            '1日前涨幅': f"{pct_chg_1day_ago:.2f}%",
-                            '成交量变化率': f"{volume_change_ratio:.2f}%",
-                            '2日前价格跌幅': f"{drop_2days_ago:.2f}",
-                            '1日前价格跌幅': f"{drop_1day_ago:.2f}",
-                            '2日前价格区间': f"{range_2days_ago:.2f}",
-                            '1日前价格区间': f"{range_1day_ago:.2f}",
-                            '前一日收盘价': f"{prev_day_close:.2f}",
-                            '前一日最低价': f"{prev_day_low:.2f}",
+                            '回调幅度': f"{pullback_pct*100:.2f}%",
+                            '反弹力度': f"{rebound_strength*100:.2f}%",
+                            '5日均线': f"{latest_ma5:.2f}",
                             '10日均线': f"{latest_ma10:.2f}",
                             '20日均线': f"{latest_ma20:.2f}",
-                            '今日最高价': f"{today_high:.2f}" if not pd.isna(today_high) else "暂无数据",
-                            '今日最低价': f"{today_low:.2f}" if not pd.isna(today_low) else "暂无数据",
-                            '当前价格': f"{today_current:.2f}" if not pd.isna(today_current) else "暂无数据",
+                            '均线支撑': "是" if (close_to_ma10 or close_to_ma20) else "否",
+                            'MACD改善': "是" if macd_improving else "否",
+                            'MACD金叉': "是" if macd_turning_positive else "否",
+                            '缩量回调': "是" if volume_decreasing else "否",
+                            '反转信号': "是" if reversal_signal else "否",
                             'K线图': chart_path if chart_path else "生成失败"
                         })
-                        print_with_flush(f"股票 {stock_code} {stock_name} 符合条件")
+                        print_with_flush(f"股票 {stock_code} {stock_name} 符合龙回头条件")
             
             except Exception as e:
                 print_with_flush(f"处理股票 {stock_code} 时出错: {e}")
@@ -364,15 +378,15 @@ def main():
             result_df = pd.DataFrame(result_stocks)
             
             # 显示结果
-            print_with_flush(f"\n符合所有筛选条件的股票列表（共 {len(result_df)} 只）：")
+            print_with_flush(f"\n符合龙回头策略的股票列表（共 {len(result_df)} 只）：")
             print(result_df)
             
             # 保存结果
-            output_file = f'pick_stocks_{today}.csv'
+            output_file = f'dragon_head_stocks_{today}.csv'
             result_df.to_csv(output_file, encoding='utf-8-sig', index=False)
             print_with_flush(f"\n数据已保存到 {output_file}")
         else:
-            print_with_flush("没有找到符合所有筛选条件的股票")
+            print_with_flush("没有找到符合龙回头策略的股票")
         
     except Exception as e:
         print_with_flush(f"程序执行出错: {e}")

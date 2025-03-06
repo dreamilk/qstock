@@ -2,7 +2,7 @@ name: Worker
 
 on:
     schedule:
-        - cron: '0 1 * * *'  # UTC时间1:00 (对应UTC+8时区的9:00)
+        - cron: '0 1 * * 1-5'  # UTC时间1:00 (对应UTC+8时区的9:00), 仅周一至周五
     workflow_dispatch: # 允许手动触发
 
 jobs:
