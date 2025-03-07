@@ -114,6 +114,22 @@ def generate_kline_chart(stock_code, stock_name,reference_date, output_dir="char
         if not plot_data['MA20'].isnull().all():
             add_plots.append(mpf.make_addplot(plot_data['MA20'], color='purple', width=1))
         
+        # 添加买入卖出点标记的功能增强
+        try:
+            # 计算最近的支撑位和阻力位
+            max_high = plot_data['High'].max()
+            min_low = plot_data['Low'].min()
+            
+            # 添加支撑位和阻力位标记
+            support_level = plot_data['Low'].rolling(window=5).min().iloc[-5]
+            resistance_level = plot_data['High'].rolling(window=5).max().iloc[-5]
+            
+            # 添加支撑位和阻力位线
+            add_plots.append(mpf.make_addplot([support_level] * len(plot_data), color='green', linestyle='--', width=1))
+            add_plots.append(mpf.make_addplot([resistance_level] * len(plot_data), color='red', linestyle='--', width=1))
+        except Exception:
+            pass  # 忽略标记添加失败的情况
+        
         # 计算文件名 - 保持要求的格式但确保文件名安全
         end_date_str = end_date.strftime('%Y%m%d')
         # 替换股票名称中可能导致文件名问题的字符
@@ -152,6 +168,129 @@ def generate_kline_chart(stock_code, stock_name,reference_date, output_dir="char
     except Exception as e:
         print_with_flush(f"生成股票 {stock_code} K线图时出错: {e}")
         return None
+
+def calculate_entry_exit_points(stock_code, stock_hist, date_4days_ago, date_1day_ago, close_1day_ago):
+    """计算推荐买入点、卖出点和预期收益
+    
+    Args:
+        stock_code: 股票代码
+        stock_hist: 股票历史数据
+        date_4days_ago: 涨停日期
+        date_1day_ago: 最近交易日
+        close_1day_ago: 最近收盘价
+    
+    Returns:
+        tuple: (买入价, 止损价, 目标价1, 目标价2, 最大预期收益率)
+    """
+    try:
+        # 计算Fibonacci回调水平作为买入点参考
+        high_point = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_4days_ago]['最高'].values[0]
+        
+        # 确保日期比较使用相同的格式 - 全部转为字符串进行比较
+        date_4days_ago_str = date_4days_ago
+        date_1day_ago_str = date_1day_ago
+        
+        # 修复日期比较问题
+        recent_low = stock_hist[(stock_hist['日期'].astype(str).str.replace("-", "") > date_4days_ago_str) & 
+                               (stock_hist['日期'].astype(str).str.replace("-", "") <= date_1day_ago_str)]['最低'].min()
+        
+        # 计算Fib回调价位 (38.2%, 50%, 61.8%)
+        price_range = high_point - recent_low
+        fib_382 = high_point - price_range * 0.382
+        fib_50 = high_point - price_range * 0.5
+        fib_618 = high_point - price_range * 0.618
+        
+        # 根据当前位置确定买入点
+        if close_1day_ago < fib_618:
+            # 价格已经低于61.8%回调位，考虑现价附近买入
+            entry_price = round(close_1day_ago * 1.02, 2)  # 略高于收盘价的买入点
+        elif close_1day_ago < fib_50:
+            # 价格在50%-61.8%之间，考虑在接近61.8%位置买入
+            entry_price = round(max(close_1day_ago * 0.98, fib_618), 2)
+        else:
+            # 价格在高位，等待回调至61.8%位买入
+            entry_price = round(fib_618, 2)
+        
+        # 设置止损点 (低于最近低点5%)
+        stop_loss = round(recent_low * 0.95, 2)
+        
+        # 设置目标价 (Fibonacci扩展)
+        target1 = round(recent_low + price_range * 1.0, 2)  # 100% 反弹
+        target2 = round(recent_low + price_range * 1.618, 2)  # 161.8% 扩展
+        
+        # 计算预期收益率
+        max_return_pct = round((target2 / entry_price - 1) * 100, 2)
+        
+        return entry_price, stop_loss, target1, target2, max_return_pct
+    
+    except Exception as e:
+        print_with_flush(f"计算股票 {stock_code} 买卖点时出错: {e}")
+        return None, None, None, None, None
+
+def calculate_risk_reward_ratio(entry_price, stop_loss, target1, target2):
+    """计算风险回报比
+    
+    Args:
+        entry_price: 买入价
+        stop_loss: 止损价
+        target1: 目标价1
+        target2: 目标价2
+    
+    Returns:
+        float: 风险回报比
+    """
+    if entry_price is None or stop_loss is None or target2 is None:
+        return None
+    
+    risk = entry_price - stop_loss
+    if risk <= 0:
+        return None
+    
+    reward = target2 - entry_price
+    return round(reward / risk, 2)
+
+def evaluate_market_strength(stock_hist, date_1day_ago):
+    """评估市场强度
+    
+    Args:
+        stock_hist: 股票历史数据
+        date_1day_ago: 最近交易日
+    
+    Returns:
+        str: 市场强度评估 ('强', '中', '弱')
+    """
+    try:
+        # 计算RSI
+        close_series = stock_hist['收盘']
+        delta = close_series.diff()
+        up, down = delta.copy(), delta.copy()
+        up[up < 0] = 0
+        down[down > 0] = 0
+        down = down.abs()
+        
+        avg_gain = up.rolling(window=14).mean()
+        avg_loss = down.rolling(window=14).mean()
+        
+        rs = avg_gain / avg_loss
+        rsi = 100 - (100 / (1 + rs))
+        
+        # 获取最近交易日的RSI
+        latest_rsi = rsi[stock_hist['日期'].astype(str).str.replace("-", "") == date_1day_ago].values[0]
+        
+        # 获取最近交易日的均线排列
+        latest_ma5 = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_1day_ago]['MA5'].values[0]
+        latest_ma10 = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_1day_ago]['MA10'].values[0]
+        latest_ma20 = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_1day_ago]['MA20'].values[0]
+        
+        # 评估市场强度
+        if latest_rsi > 60 and latest_ma5 > latest_ma10 > latest_ma20:
+            return '强'
+        elif latest_rsi > 45 and latest_ma5 > latest_ma20:
+            return '中'
+        else:
+            return '弱'
+    except Exception:
+        return '中'  # 默认为中等强度
 
 # 主程序
 def main():
@@ -321,13 +460,25 @@ def main():
                     min_price_during_pullback = min(low_3days_ago, low_2days_ago, low_1day_ago)
                     rebound_strength = close_1day_ago / min_price_during_pullback - 1
                     
-                    # 龙回头策略条件:
-                    # 1. 涨停日前后有强势表现 (5日前和涨停日是上涨的)
-                    # 2. 回调幅度适中 (-20% 到 -5% 之间)
-                    # 3. 回调过程是缩量的
-                    # 4. 最近交易日有企稳迹象 (收盘价高于开盘价，形成小阳线)
+                    # 计算买卖点和预期收益
+                    entry_price, stop_loss, target1, target2, expected_return = calculate_entry_exit_points(
+                        stock_code, stock_hist, date_4days_ago, date_1day_ago, close_1day_ago
+                    )
+                    
+                    # 计算风险回报比
+                    risk_reward = calculate_risk_reward_ratio(entry_price, stop_loss, target1, target2)
+                    
+                    # 评估市场强度
+                    market_strength = evaluate_market_strength(stock_hist, date_1day_ago)
+                    
+                    # 增强后的龙回头策略条件：
+                    # 1. 涨停日前一日有上涨表现（股价强势）
+                    # 2. 回调幅度适中（-20% 到 -5% 之间）
+                    # 3. 回调过程是缩量的（股价下跌但人气未流失）
+                    # 4. 最近交易日有企稳迹象（收盘价高于开盘价或形成带下影线K线）
                     # 5. 价格接近均线支撑位或已在均线上方企稳
                     # 6. MACD有改善或金叉迹象
+                    # 7. 风险回报比大于2（高质量交易）
                     if (
                         # 上涨阶段特征
                         pct_chg_5days_ago > 0 and pct_chg_4days_ago > 5 and
@@ -341,11 +492,16 @@ def main():
                         # 均线支撑特征
                         (close_to_ma10 or close_to_ma20 or above_ma20) and
                         
-                        # 反转信号特征
-                        (reversal_signal or macd_improving or macd_turning_positive) and
+                        # 反转信号特征 - 增强判断
+                        (reversal_signal or 
+                         (macd_improving and close_1day_ago > low_1day_ago * 1.01) or 
+                         macd_turning_positive) and
                         
                         # 确保反弹力度适中，不是大幅反弹（可能是诱多）
-                        0.01 < rebound_strength < 0.05
+                        0.01 < rebound_strength < 0.05 and
+                        
+                        # 风险回报比合理
+                        (risk_reward is None or risk_reward > 2)
                     ):
                         # 生成K线图
                         print_with_flush(f"正在生成 {stock_code} {stock_name} 的K线图...")
@@ -357,6 +513,13 @@ def main():
                             '涨停日': date_4days_ago,
                             '回调幅度': f"{pullback_pct*100:.2f}%",
                             '反弹力度': f"{rebound_strength*100:.2f}%",
+                            '推荐买入价': entry_price,
+                            '止损价': stop_loss,
+                            '目标价1': target1,
+                            '目标价2': target2,
+                            '预期收益': f"{expected_return}%" if expected_return else "N/A",
+                            '风险回报比': risk_reward,
+                            '市场强度': market_strength,
                             '5日均线': f"{latest_ma5:.2f}",
                             '10日均线': f"{latest_ma10:.2f}",
                             '20日均线': f"{latest_ma20:.2f}",
