@@ -11,7 +11,7 @@ import os
 
 # 显示当前运行时间
 current_time = datetime.datetime.now()
-print(f"程序开始运行时间: {current_time.strftime('%Y-%m-%d %H:%M:%S')}")
+print(f"运行时间: {current_time.strftime('%Y-%m-%d %H:%M:%S')} akshare版本号: {ak.__version__}")
 
 # 设置请求超时
 import requests
