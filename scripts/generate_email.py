@@ -24,6 +24,15 @@ def generate_email_content():
             img_data = base64.b64encode(img.read()).decode()
             images_html += f'<h2>{img_file.stem}</h2>'
             images_html += f'<img src="data:image/png;base64,{img_data}" /><br><br>'
+
+    if len(images_html) == 0 and len(tables_html) == 0:
+        return f'''<html>
+<body>
+  <h1>今日推荐股票 - {today}</h1>
+  <p>股市有风险，投资需谨慎<p>
+  <h2>保持观望</h2>
+</body>
+</html>'''
     
     # 生成完整的HTML邮件内容
     today = date.today().strftime('%Y-%m-%d')
