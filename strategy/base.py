@@ -29,7 +29,7 @@ class Strategy:
     def __init__(self, name):
         self.name = name
     
-    def filter_stocks(self, buy_date: str, limit_stock_count: int = 10) -> List[Stock]:
+    def filter_stocks(self, buy_date: str, limit_stock_count: int = 10, filter_stocks: bool = True) -> List[Stock]:
         """
         Filter stocks based on strategy criteria
 

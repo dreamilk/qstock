@@ -1,5 +1,7 @@
 from strategy.dragonhead import DragonHeadStrategy
 from strategy.hit_board import HitBoardStrategy
+from strategy.custom import CustomStrategy
+
 def get_strategy(strategy_name):
     """
     Factory function to get the appropriate strategy
@@ -15,5 +17,7 @@ def get_strategy(strategy_name):
         return DragonHeadStrategy()
     elif strategy_name.lower() == 'hit_board':
         return HitBoardStrategy()
+    elif strategy_name.lower() == 'custom':
+        return CustomStrategy()
     else:
         raise ValueError(f"Unknown strategy: {strategy_name}") 

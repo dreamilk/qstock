@@ -1,13 +1,7 @@
 import akshare as ak
 import datetime
-import pandas as pd
-import time
 import sys
 import argparse  # Add argparse for command-line arguments
-import matplotlib.pyplot as plt
-import mplfinance as mpf
-from matplotlib.ticker import AutoMinorLocator
-import os
 from utils.draw_kline import generate_kline_chart
 
 # Import the strategy factory
@@ -46,8 +40,9 @@ def main():
     # 解析命令行参数
     parser = argparse.ArgumentParser(description='股票筛选工具')
     parser.add_argument('-d', '--date', help='指定日期 (格式: YYYYMMDD)', default=None)
-    parser.add_argument('-s', '--strategy', help='选股策略 (默认: dragonhead, hit_board)', default='dragonhead')
+    parser.add_argument('-s', '--strategy', help='选股策略 (默认: dragonhead, hit_board, custom)', default='custom')
     parser.add_argument('-l', '--limit', help='限制股票数量 (默认: 5)', default=10)
+    parser.add_argument('-f', '--filter', help='是否过滤创业板、科创板、ST股 (默认: True)', default=True)
     args = parser.parse_args()
     
     # 设置日期
@@ -64,7 +59,7 @@ def main():
         strategy = get_strategy(args.strategy)
         
         # 筛选股票
-        result_stocks = strategy.filter_stocks(today, limit_stock_count=int(args.limit))
+        result_stocks = strategy.filter_stocks(today, limit_stock_count=int(args.limit), filter_stocks=args.filter)
         
         # 转换为DataFrame
         if result_stocks:

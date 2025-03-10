@@ -11,7 +11,7 @@ class DragonHeadStrategy(Strategy):
     def __init__(self):
         super().__init__(name="dragonhead")
         
-    def filter_stocks(self, buy_date: str, limit_stock_count: int = 10) -> List[Stock]:
+    def filter_stocks(self, buy_date: str, limit_stock_count: int = 10, filter_stocks: bool = True) -> List[Stock]:
         """
         根据龙回头策略筛选股票
         
@@ -38,6 +38,13 @@ class DragonHeadStrategy(Strategy):
         for _, row in stock_list.iterrows():
             stock_code = row['代码']
             stock_name = row['名称']
+
+            # 过滤创业板、科创板、ST股
+            if filter_stocks:
+                if not stock_code.startswith('60') and not stock_code.startswith('00'):
+                    continue
+                if 'ST' in stock_name:
+                    continue
 
             print(f"正在处理股票: {stock_code} {stock_name}")
 
