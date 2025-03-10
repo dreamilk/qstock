@@ -47,7 +47,7 @@ def main():
     parser = argparse.ArgumentParser(description='股票筛选工具')
     parser.add_argument('-d', '--date', help='指定日期 (格式: YYYYMMDD)', default=None)
     parser.add_argument('-s', '--strategy', help='选股策略 (默认: dragonhead, hit_board)', default='dragonhead')
-    parser.add_argument('-l', '--limit', help='限制股票数量 (默认: 10)', default=10)
+    parser.add_argument('-l', '--limit', help='限制股票数量 (默认: 5)', default=10)
     args = parser.parse_args()
     
     # 设置日期
