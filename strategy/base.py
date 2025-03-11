@@ -9,6 +9,7 @@ class Stock:
     buy_price: float 
     sell_price: float
     suggest_reason: str
+    score: float
 
     def __str__(self):
         return f"{self.code} {self.name} {self.current_price} {self.buy_price} {self.sell_price} {self.suggest_reason}"
@@ -20,7 +21,8 @@ class Stock:
             "current_price": self.current_price,
             "buy_price": self.buy_price,
             "sell_price": self.sell_price,
-            "suggest_reason": self.suggest_reason
+            "suggest_reason": self.suggest_reason,
+            "score": self.score
         }
 
 class Strategy:

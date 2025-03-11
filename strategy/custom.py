@@ -38,6 +38,15 @@ class CustomStrategy(Strategy):
             print(f"正在处理股票: {code}, {stock_name}")
 
             try:
+                # 获取股票的主力持股数据
+                main_funds_data = ak.stock_individual_fund_flow(stock=code, market="sh" if code.startswith("6") else "sz")
+                # 确保有足够的主力资金数据
+                if len(main_funds_data) < 5:
+                    continue
+
+                # 计算近期主力资金流入情况
+                main_funds_data = main_funds_data.sort_values(by="日期", ascending=False).reset_index(drop=True)
+                
                 # 获取历史数据
                 stock_data = ak.stock_zh_a_hist(symbol=code, start_date=start_date, end_date=buy_date, adjust="qfq")
                 
@@ -62,13 +71,25 @@ class CustomStrategy(Strategy):
                 
                 # 条件4: 前一天收盘价低于4日前收盘价
                 day1_close_lower_than_day4 = stock_data.iloc[1]['收盘'] < stock_data.iloc[4]['收盘']
+
+                # 条件5: 最近一天有主力资金净流入
+                recent_main_fund_inflow = main_funds_data.iloc[1]['主力净流入-净额'] > 0
+
+                # 条件6: 近三天主力资金净流入为正
+                recent_days_inflow = sum(main_funds_data.iloc[1:3]['主力净流入-净额'])
+                recent_main_fund_inflow_3_days = recent_days_inflow > 0
+
                 
                 # 检查所有条件
                 # 1. 3日前涨，近两日跌
                 # 2. 3日前成交量大于4日前
                 # 3. 3日前最低价高于特定价格点
                 # 4. 前一天收盘价低于4日前收盘价
-                if day3_up and day2_down and day1_down and day3_volume_higher and day3_low_price_higher and day1_close_lower_than_day4:
+                # 5. 最近一天有主力资金净流入
+                # 6. 近三天主力资金净流入为正
+                if (day3_up and day2_down and day1_down and 
+                    day3_volume_higher and day3_low_price_higher and 
+                    day1_close_lower_than_day4 and recent_main_fund_inflow and recent_main_fund_inflow_3_days):
 
                     # 创建Stock对象并添加到结果列表
                     stock_name = all_stocks.loc[all_stocks['代码'] == code, '名称'].values[0] if not all_stocks.empty else "Unknown"
@@ -77,7 +98,7 @@ class CustomStrategy(Strategy):
                     stock.name = stock_name
                     stock.current_price = float(stock_data.iloc[0]['收盘'])
                     stock.buy_price = float(stock_data.iloc[0]['收盘'])
-                    stock.sell_price = round(stock.buy_price * 1.15, 2)  # 设置15%的获利目标
+                    stock.sell_price = round(stock.buy_price * 1.07, 2)  # 设置7%的获利目标
                     stock.suggest_reason = f"自定义策略：该股票在{buy_date}满足所有条件"
                     stocks.append(stock)
                     
