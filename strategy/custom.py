@@ -3,111 +3,146 @@ from typing import List
 import akshare as ak
 import datetime
 import pandas as pd
+import sys
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 class CustomStrategy(Strategy):
     def __init__(self):
         super().__init__(name="custom")
         
-        
-    def filter_stocks(self, buy_date: str, limit_stock_count: int = 10, filter_stocks: bool = True) -> List[Stock]:
-
-        # 获取所有股票代码
-        all_stocks = ak.stock_zh_a_spot_em()
-
-        # 存储符合条件的股票
-        stocks = []
-        
-        # 将日期字符串转换为datetime对象以进行日期计算
-        buy_date_obj = datetime.datetime.strptime(buy_date, "%Y%m%d")
-        
-        # 计算开始日期（需要获取buy_date之前的5天数据以进行分析）
-        start_date_obj = buy_date_obj - datetime.timedelta(days=10)  # 多取几天以确保有足够的交易日
-        start_date = start_date_obj.strftime("%Y%m%d")
-        
-        for _, row in all_stocks.iterrows():  # 限制处理的股票数量以提高效率
-            code = row['代码']
-            stock_name = row['名称']
-
-            # 过滤创业板、科创板、ST股
+    def filter_stocks(self, buy_date: str, limit_stock_count: int = 10, filter_stocks: bool = True) -> List[Stock]:        
+        try:
+            # 获取最近一段时间的交易日历
+            trade_date_df = ak.tool_trade_date_hist_sina()
+            trade_dates = [str(date).replace("-", "") for date in trade_date_df["trade_date"].tolist()]
+            trade_dates = sorted(trade_dates, reverse=True)
+            
+            # 找出buy_date之前的交易日
+            recent_dates = [date for date in trade_dates if date <= buy_date]
+            
+            if len(recent_dates) <= 4:
+                print("无法获取足够的交易日数据")
+                return []
+                
+            # 获取相关交易日期
+            date_4days_ago = recent_dates[4]  # 4个交易日前（涨停日）
+            date_3days_ago = recent_dates[3]  # 3个交易日前（需为上涨，成交量需大于涨停日）
+            date_2days_ago = recent_dates[2]  # 2个交易日前（需为下跌）
+            date_1day_ago = recent_dates[1]   # 1个交易日前（需为下跌）
+            latest_date = recent_dates[0]     # 最近交易日
+            
+            print(f"将获取 {date_4days_ago} 的涨停股票数据...")
+            
+            # 获取涨停股票数据
+            limit_up_stocks = ak.stock_zt_pool_em(date=date_4days_ago)
+            
+            if limit_up_stocks.empty:
+                print(f"{date_4days_ago} 没有涨停股票数据")
+                return []
+            
+            print(f"成功获取数据，共 {len(limit_up_stocks)} 条记录")
+            
+            # 筛选沪深主板股票
             if filter_stocks:
-                if not code.startswith('60') and not code.startswith('00'):
-                    continue
-                if 'ST' in stock_name:
-                    continue
-
-            print(f"正在处理股票: {code}, {stock_name}")
-
-            try:
-                # 获取股票的主力持股数据
-                main_funds_data = ak.stock_individual_fund_flow(stock=code, market="sh" if code.startswith("6") else "sz")
-                # 确保有足够的主力资金数据
-                if len(main_funds_data) < 5:
-                    continue
-
-                # 计算近期主力资金流入情况
-                main_funds_data = main_funds_data.sort_values(by="日期", ascending=False).reset_index(drop=True)
+                main_board_stocks = limit_up_stocks[
+                    (limit_up_stocks['代码'].str.startswith('00') | 
+                     limit_up_stocks['代码'].str.startswith('60'))
+                ]
                 
-                # 获取历史数据
-                stock_data = ak.stock_zh_a_hist(symbol=code, start_date=start_date, end_date=buy_date, adjust="qfq")
+                # 排除ST股票
+                filtered_stocks = main_board_stocks[~main_board_stocks['名称'].str.contains('ST')]
+                print(f"筛选后股票数: {len(filtered_stocks)}")
+            else:
+                filtered_stocks = limit_up_stocks
+            
+            # 存储符合条件的股票
+            stocks = []
+            
+            for idx, stock_info in filtered_stocks.iterrows():
+                stock_code = stock_info['代码']
+                stock_name = stock_info['名称']
                 
-                # 确保有足够的数据
-                if len(stock_data) < 5:
-                    continue
+                print(f"正在处理股票: {stock_code}, {stock_name}")
                 
-                # 按日期降序排序，使索引0为最近日期
-                stock_data = stock_data.sort_values(by="日期", ascending=False).reset_index(drop=True)
-                
-                # 条件1: 3日前涨，近两日跌
-                day3_up = stock_data.iloc[3]['涨跌幅'] > 0
-                day2_down = stock_data.iloc[2]['涨跌幅'] < 0
-                day1_down = stock_data.iloc[1]['涨跌幅'] < 0
-                
-                # 条件2: 3日前成交量大于4日前
-                day3_volume_higher = stock_data.iloc[3]['成交量'] > stock_data.iloc[4]['成交量']
-                
-                # 条件3: 3日前最低价高于特定价格点 (这里假设为5元，根据实际需求调整)
-                price_threshold = 5.0
-                day3_low_price_higher = stock_data.iloc[3]['最低'] > price_threshold
-                
-                # 条件4: 前一天收盘价低于4日前收盘价
-                day1_close_lower_than_day4 = stock_data.iloc[1]['收盘'] < stock_data.iloc[4]['收盘']
-
-                # 条件5: 最近一天有主力资金净流入
-                recent_main_fund_inflow = main_funds_data.iloc[1]['主力净流入-净额'] > 0
-
-                # 条件6: 近三天主力资金净流入为正
-                recent_days_inflow = sum(main_funds_data.iloc[1:3]['主力净流入-净额'])
-                recent_main_fund_inflow_3_days = recent_days_inflow > 0
-
-                
-                # 检查所有条件
-                # 1. 3日前涨，近两日跌
-                # 2. 3日前成交量大于4日前
-                # 3. 3日前最低价高于特定价格点
-                # 4. 前一天收盘价低于4日前收盘价
-                # 5. 最近一天有主力资金净流入
-                # 6. 近三天主力资金净流入为正
-                if (day3_up and day2_down and day1_down and 
-                    day3_volume_higher and day3_low_price_higher and 
-                    day1_close_lower_than_day4 and recent_main_fund_inflow and recent_main_fund_inflow_3_days):
-
-                    # 创建Stock对象并添加到结果列表
-                    stock_name = all_stocks.loc[all_stocks['代码'] == code, '名称'].values[0] if not all_stocks.empty else "Unknown"
-                    stock = Stock()
-                    stock.code = code
-                    stock.name = stock_name
-                    stock.current_price = float(stock_data.iloc[0]['收盘'])
-                    stock.buy_price = float(stock_data.iloc[0]['收盘'])
-                    stock.sell_price = round(stock.buy_price * 1.07, 2)  # 设置7%的获利目标
-                    stock.suggest_reason = f"自定义策略：该股票在{buy_date}满足所有条件"
-                    stocks.append(stock)
+                try:
+                    # 获取股票历史数据
+                    stock_hist = ak.stock_zh_a_hist(symbol=stock_code, period="daily", 
+                                                   start_date=date_4days_ago, end_date=latest_date, 
+                                                   adjust="qfq")
                     
-                    # 如果已经找到足够的股票，则停止
-                    if len(stocks) >= limit_stock_count:
-                        break
+                    # 检查数据是否完整
+                    if len(stock_hist) < 5:  # 需要5个交易日的数据
+                        continue
+                    
+                    # 检查日期是否匹配
+                    dates_in_hist = [d.replace("-", "") for d in stock_hist['日期'].astype(str)]
+                    
+                    if not all(date in dates_in_hist for date in [date_4days_ago, date_3days_ago, date_2days_ago, date_1day_ago]):
+                        continue
+                    
+                    # 获取涨停日和次日的成交量
+                    volume_4days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_4days_ago]['成交量'].values[0]
+                    volume_3days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_3days_ago]['成交量'].values[0]
+                    
+                    # 获取各日期的涨跌幅
+                    pct_chg_3days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_3days_ago]['涨跌幅'].values[0]
+                    pct_chg_2days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_2days_ago]['涨跌幅'].values[0]
+                    pct_chg_1day_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_1day_ago]['涨跌幅'].values[0]
+                    
+                    # 获取4日前(涨停日)的最高价和最低价
+                    high_4days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_4days_ago]['最高'].values[0]
+                    low_4days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_4days_ago]['最低'].values[0]
+                    
+                    # 计算特定价格点：4日前最低价+(最高价-最低价)*0.3
+                    price_point = low_4days_ago + (high_4days_ago - low_4days_ago) * 0.2
+                    
+                    # 获取3日前的最低价
+                    low_3days_ago = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == date_3days_ago]['最低'].values[0]
+                    
+                    # 获取最新收盘价
+                    latest_close = stock_hist[stock_hist['日期'].astype(str).str.replace("-", "") == latest_date]['收盘'].values[0]
+                    
+                    # 检查所有条件：
+                    # 1. 3日前涨，近两日跌
+                    # 2. 3日前成交量大于4日前
+                    # 3. 3日前最低价高于特定价格点
+                    if (pct_chg_3days_ago > 0 and 
+                        pct_chg_2days_ago < 0 and 
+                        pct_chg_1day_ago < 0 and
+                        volume_3days_ago > volume_4days_ago):
                         
-            except Exception as e:
-                print(f"Error processing stock {code}: {e}")
-                continue
-
-        return stocks
+                        # 计算成交量变化率
+                        volume_change_ratio = (volume_3days_ago / volume_4days_ago - 1) * 100
+                        
+                        # 计算价格条件满足的程度
+                        price_condition_ratio = ((low_3days_ago - price_point) / low_4days_ago) * 100
+                        
+                        # 创建Stock对象并添加到结果列表
+                        stock = Stock()
+                        stock.code = stock_code
+                        stock.name = stock_name
+                        stock.current_price = float(latest_close)
+                        stock.buy_price = float(latest_close)
+                        stock.sell_price = round(stock.buy_price * 1.07, 2)  # 设置7%的获利目标
+                        # 添加得分属性，根据成交量变化和价格条件计算
+                        stock.score = round(volume_change_ratio * 0.6 + price_condition_ratio * 0.4, 2)
+                        stock.suggest_reason = (f"自定义策略：涨停回调买入。{date_4days_ago}涨停，{date_3days_ago}上涨(+{pct_chg_3days_ago:.2f}%)，"
+                                              f"成交量增加{volume_change_ratio:.2f}%，近两日回调，价格条件超额{price_condition_ratio:.2f}%")
+                        stocks.append(stock)
+                                                
+                    
+                except Exception as e:
+                    print(f"处理股票 {stock_code} 时出错: {e}")
+                    continue
+            
+            # 根据得分排序
+            stocks.sort(key=lambda x: x.score, reverse=True)
+            if len(stocks) > limit_stock_count:
+                stocks = stocks[:limit_stock_count]
+            return stocks
+                
+        except Exception as e:
+            print(f"程序执行出错: {e}")
+            return []
