@@ -1,6 +1,7 @@
 from strategy.dragonhead import DragonHeadStrategy
 from strategy.hit_board import HitBoardStrategy
 from strategy.custom import CustomStrategy
+from strategy.low_stock import LowStockStrategy
 
 def get_strategy(strategy_name):
     """
@@ -19,5 +20,7 @@ def get_strategy(strategy_name):
         return HitBoardStrategy()
     elif strategy_name.lower() == 'custom':
         return CustomStrategy()
+    elif strategy_name.lower() == 'low_stock':
+        return LowStockStrategy()
     else:
         raise ValueError(f"Unknown strategy: {strategy_name}") 

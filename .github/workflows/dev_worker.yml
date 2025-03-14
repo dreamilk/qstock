@@ -6,7 +6,7 @@ on:
         - main
     workflow_dispatch: # 允许手动触发
     schedule:
-        - cron: '13 0 * * 1-5'  # UTC时间1:13 (对应UTC+8时区的9:13), 仅周一至周五
+        - cron: '13 12 * * 1-5'  # UTC时间1:13 (对应UTC+8时区的9:13), 仅周一至周五
 
 jobs:
   worker:
