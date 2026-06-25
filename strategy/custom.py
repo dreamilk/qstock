@@ -36,6 +36,36 @@ class CustomStrategy(Strategy):
             'boll_period': 20,              # 布林带周期
             'boll_std': 2,                  # 布林带标准差
         }
+
+    def _to_tx_symbol(self, symbol: str) -> str:
+        if symbol.startswith(("sh", "sz")):
+            return symbol
+        if symbol.startswith("6"):
+            return f"sh{symbol}"
+        return f"sz{symbol}"
+
+    def _normalize_hist_df(self, df: pd.DataFrame) -> pd.DataFrame:
+        if df is None or df.empty:
+            return df
+        if "日期" in df.columns:
+            return df
+        if "date" in df.columns:
+            out = df.copy()
+            out.rename(
+                columns={
+                    "date": "日期",
+                    "open": "开盘",
+                    "close": "收盘",
+                    "high": "最高",
+                    "low": "最低",
+                    "amount": "成交量",
+                },
+                inplace=True,
+            )
+            if "涨跌幅" not in out.columns and "收盘" in out.columns:
+                out["涨跌幅"] = out["收盘"].pct_change() * 100
+            return out
+        return df
         
     def _get_trade_dates(self, buy_date: str, days_needed: int = 5) -> List[str]:
         """获取交易日期列表"""
@@ -303,10 +333,27 @@ class CustomStrategy(Strategy):
                     # 获取股票历史数据 - 扩大日期范围以计算指标
                     start_date = (datetime.datetime.strptime(date_4days_ago, "%Y%m%d") - 
                                  datetime.timedelta(days=60)).strftime("%Y%m%d")  # 获取更长的历史数据
-                    
-                    stock_hist = ak.stock_zh_a_hist(symbol=stock_code, period="daily", 
-                                                   start_date=start_date, end_date=latest_date, 
-                                                   adjust="qfq")
+
+                    try:
+                        stock_hist = ak.stock_zh_a_hist(
+                            symbol=stock_code,
+                            period="daily",
+                            start_date=start_date,
+                            end_date=latest_date,
+                            adjust="qfq",
+                            timeout=10,
+                        )
+                    except Exception:
+                        tx_symbol = self._to_tx_symbol(stock_code)
+                        stock_hist = ak.stock_zh_a_hist_tx(
+                            symbol=tx_symbol,
+                            start_date=start_date,
+                            end_date=latest_date,
+                            adjust="qfq",
+                            timeout=10,
+                        )
+
+                    stock_hist = self._normalize_hist_df(stock_hist)
                     
                     # 检查数据是否完整
                     if len(stock_hist) < 5:  # 需要5个交易日的数据

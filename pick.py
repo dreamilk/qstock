@@ -1,3 +1,19 @@
+import os
+import socket
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+socket.setdefaulttimeout(20)
+
+_old_request = requests.sessions.Session.request
+
+def _patched_request(self, method, url, **kwargs):
+    kwargs.setdefault("timeout", (5, 20))
+    return _old_request(self, method, url, **kwargs)
+
+requests.sessions.Session.request = _patched_request
+
 import akshare as ak
 import datetime
 import sys
@@ -11,13 +27,9 @@ from strategy import get_strategy, toDataFrame
 current_time = datetime.datetime.now()
 print(f"运行时间: {current_time.strftime('%Y-%m-%d %H:%M:%S')} akshare版本号: {ak.__version__}")
 
-# 设置请求超时
-import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
-
 # 配置请求会话，添加重试和超时机制
 session = requests.Session()
+session.trust_env = False
 retry = Retry(total=3, backoff_factor=0.5)
 adapter = HTTPAdapter(max_retries=retry)
 session.mount('http://', adapter)
@@ -79,6 +91,14 @@ def main():
             print_with_flush(f"\n数据已保存到 {output_file}")
         else:
             print_with_flush(f"没有找到符合{strategy.name}策略的股票")
+            output_file = f'{strategy.name}_stocks_{today}.csv'
+            result_df = toDataFrame([])
+            if len(result_df.columns) == 0:
+                result_df = result_df.reindex(
+                    columns=["code", "name", "current_price", "buy_price", "sell_price", "suggest_reason", "score"]
+                )
+            result_df.to_csv(output_file, encoding='utf-8-sig', index=False)
+            print_with_flush(f"\n数据已保存到 {output_file}")
         
     except Exception as e:
         print_with_flush(f"程序执行出错: {e}")

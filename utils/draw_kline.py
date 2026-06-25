@@ -30,14 +30,53 @@ def generate_kline_chart(stock_code, stock_name,reference_date, output_dir="char
         end_date_str = end_date.strftime('%Y%m%d')
         
         
-        # 使用akshare获取数据
-        hist_data = ak.stock_zh_a_hist(
-            symbol=stock_code, 
-            period="daily", 
-            start_date=start_date_str, 
-            end_date=end_date_str, 
-            adjust="qfq"
-        )
+        def to_tx_symbol(symbol: str) -> str:
+            if symbol.startswith(("sh", "sz")):
+                return symbol
+            if symbol.startswith("6"):
+                return f"sh{symbol}"
+            return f"sz{symbol}"
+
+        def normalize_hist_df(df: pd.DataFrame) -> pd.DataFrame:
+            if df is None or df.empty:
+                return df
+            if "日期" in df.columns:
+                return df
+            if "date" in df.columns:
+                out = df.copy()
+                out.rename(
+                    columns={
+                        "date": "日期",
+                        "open": "开盘",
+                        "close": "收盘",
+                        "high": "最高",
+                        "low": "最低",
+                        "amount": "成交量",
+                    },
+                    inplace=True,
+                )
+                return out
+            return df
+
+        try:
+            hist_data = ak.stock_zh_a_hist(
+                symbol=stock_code,
+                period="daily",
+                start_date=start_date_str,
+                end_date=end_date_str,
+                adjust="qfq",
+                timeout=10,
+            )
+        except Exception:
+            hist_data = ak.stock_zh_a_hist_tx(
+                symbol=to_tx_symbol(stock_code),
+                start_date=start_date_str,
+                end_date=end_date_str,
+                adjust="qfq",
+                timeout=10,
+            )
+
+        hist_data = normalize_hist_df(hist_data)
         
         # 检查数据量是否足够
         if len(hist_data) < 5:
