@@ -1,29 +1,25 @@
-from typing import List
+from typing import List, Optional
+from dataclasses import dataclass, field, asdict
 import pandas as pd
 
 
+@dataclass
 class Stock:
-    code: str  
-    name: str 
-    current_price: float 
-    buy_price: float 
-    sell_price: float
-    suggest_reason: str
-    score: float
+    """Represents a filtered stock with strategy analysis results."""
+    code: str = ""
+    name: str = ""
+    current_price: float = 0.0
+    buy_price: float = 0.0
+    sell_price: float = 0.0
+    stop_loss: float = 0.0
+    suggest_reason: str = ""
+    score: float = 0.0
 
     def __str__(self):
         return f"{self.code} {self.name} {self.current_price} {self.buy_price} {self.sell_price} {self.suggest_reason}"
     
     def to_dict(self):
-        return {
-            "code": self.code,
-            "name": self.name,
-            "current_price": self.current_price,
-            "buy_price": self.buy_price,
-            "sell_price": self.sell_price,
-            "suggest_reason": self.suggest_reason,
-            "score": self.score
-        }
+        return asdict(self)
 
 class Strategy:
     """Base strategy class that all strategies should inherit from"""
