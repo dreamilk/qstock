@@ -1,14 +1,12 @@
 """
 KDJ 策略回测模块
 
-使用 pybroker 对 A 股进行 KDJ 指标策略回测。
+使用 pybroker 对 A 股进行 KDJ 指标策略回测（pybroker 为可选依赖）。
 
 用法:
+    pip install pybroker
     python broker.py
 """
-import pybroker as pb
-from pybroker import Strategy, ExecContext, highest, lowest
-from pybroker.ext.data import AKShare
 import matplotlib
 matplotlib.use('Agg')  # headless 模式，不弹窗口
 import matplotlib.pyplot as plt
@@ -46,6 +44,7 @@ def calculate_kdj(close, high, low, n=9):
 
 def make_kdj_strategy(percent: float = 0.25):
     """创建 KDJ 交易策略函数"""
+    from pybroker import ExecContext  # lazy import — pybroker is optional
     entry_prices: Dict[str, float] = {}
 
     def kdj_strategy(ctx: ExecContext):
@@ -134,6 +133,9 @@ def run_backtest(
     save_plot=True
 ):
     """运行 KDJ 策略回测"""
+    import pybroker as pb
+    from pybroker import Strategy
+    from pybroker.ext.data import AKShare
     if symbols is None:
         symbols = ["603893", "002594", "002049", "600048"]
     
